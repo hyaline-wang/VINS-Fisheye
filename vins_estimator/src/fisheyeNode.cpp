@@ -69,6 +69,7 @@ void FisheyeFlattenHandler::imgs_callback(double t, const cv::Mat & img1, const 
     TicToc t_f;
 
     if (USE_GPU) {
+#ifndef WITHOUT_CUDA
         // is_color = true;
         if (is_color) {
             fisheye_up_imgs_cuda = fisheys_undists[0].undist_all_cuda(img1, true, mask_up); 
@@ -109,6 +110,7 @@ void FisheyeFlattenHandler::imgs_callback(double t, const cv::Mat & img1, const 
             }
             buf_lock.unlock();
         }
+#endif
     } else {
         if (is_color) {
             fisheys_undists[0].stereo_flatten(img1, img2, &fisheys_undists[1], 
@@ -276,7 +278,11 @@ void FisheyeFlattenHandler::pack_and_send(ros::Time stamp,
     }
 
     size_t _size = fisheye_up_imgs_cuda.size();
-    
+
+    if (!enable_rear_side) {
+        _size = 4;
+    }
+
     if (!is_color) {
         _size = fisheye_up_imgs_cuda_gray.size();
     }
@@ -355,13 +361,14 @@ void FisheyeFlattenHandler::readIntrinsicParameter(const vector<string> &calib_f
         if (FISHEYE) {
             ROS_INFO("Flatten read fisheye %s, id %ld", calib_file[i].c_str(), i);
             FisheyeUndist un(calib_file[i].c_str(), i, FISHEYE_FOV, true, WIDTH);
+            FOCAL_LENGTH = un.f_side;
             fisheys_undists.push_back(un);
         }
     }
 }
 
 
-void VinsNodeBaseClass::pack_and_send_thread(const ros::TimerEvent & e) {               
+void VinsNodeBaseClass::pack_and_send_thread(const ros::TimerEvent & e) {  
     if (need_to_pack_and_send && cur_frame_t > t_last_send) {
         //need to pack and send
         pack_and_send_mtx.lock();
@@ -460,8 +467,8 @@ void VinsNodeBaseClass::imgs_callback(const sensor_msgs::ImageConstPtr &img1_msg
 
 void VinsNodeBaseClass::comp_imgs_callback(const sensor_msgs::CompressedImageConstPtr &img1_msg, const sensor_msgs::CompressedImageConstPtr &img2_msg)
 {
-    auto img1 = getImageFromMsg(img1_msg);
-    auto img2 = getImageFromMsg(img2_msg);
+    auto img1 = getImageFromMsg(img1_msg, cv::IMREAD_GRAYSCALE);
+    auto img2 = getImageFromMsg(img2_msg, cv::IMREAD_GRAYSCALE);
     estimator.inputImage(img1_msg->header.stamp.toSec(), img1, img2);
 }
 
@@ -495,8 +502,6 @@ void VinsNodeBaseClass::Init(ros::NodeHandle & n)
 {
     std::string config_file;
     n.getParam("config_file", config_file);
-    bool fisheye_external_flatten;
-    n.getParam("fisheye_external_flatten", fisheye_external_flatten);
     
     std::cout << "config file is " << config_file << '\n';
     readParameters(config_file);
@@ -533,7 +538,7 @@ void VinsNodeBaseClass::Init(ros::NodeHandle & n)
     }
 
     //We use blank images to initialize cuda before every thing
-    if (USE_GPU) {
+    if (USE_GPU && FISHEYE) {
         TicToc blank;
         cv::Mat mat(fisheye_handler->raw_width(), fisheye_handler->raw_height(), CV_8UC3);
         fisheye_handler->imgs_callback(0, mat, mat, true);
@@ -567,9 +572,10 @@ void VinsNodeBaseClass::Init(ros::NodeHandle & n)
         }
     }
 
-
-    timer1 = n.createTimer(ros::Duration(0.004), boost::bind(&VinsNodeBaseClass::processFlattened, (VinsNodeBaseClass*)this, _1 ));
-    if (PUB_FLATTEN) {
-        timer2 = n.createTimer(ros::Duration(1/PUB_FLATTEN_FREQ), boost::bind(&VinsNodeBaseClass::pack_and_send_thread, (VinsNodeBaseClass*)this, _1 ));
+    if (FISHEYE) {
+        timer1 = n.createTimer(ros::Duration(0.004), boost::bind(&VinsNodeBaseClass::processFlattened, (VinsNodeBaseClass*)this, _1 ));
+        if (PUB_FLATTEN) {
+            timer2 = n.createTimer(ros::Duration(1.0/PUB_FLATTEN_FREQ), boost::bind(&VinsNodeBaseClass::pack_and_send_thread, (VinsNodeBaseClass*)this, _1 ));
+        }
     }
 }

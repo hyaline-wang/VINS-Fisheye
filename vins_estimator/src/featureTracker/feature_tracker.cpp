@@ -70,7 +70,7 @@ std::vector<cv::Point2f> detect_orb_by_region(cv::InputArray _img, cv::InputArra
 
             for (auto kp : kpts) {
                 kp.pt.x = kp.pt.x + small_width*i;
-                kp.pt.y = kp.pt.y + small_width*j;
+                kp.pt.y = kp.pt.y + small_height*j;
                 ret.push_back(kp.pt);
             }
         }
@@ -110,19 +110,31 @@ void detectPoints(cv::InputArray img, cv::InputArray mask, vector<cv::Point2f> &
     TicToc tic;
     ROS_INFO("Lost %d pts; Require %d will detect %d", lack_up_top_pts, require_pts, lack_up_top_pts > require_pts/4);
     if (lack_up_top_pts > require_pts/4) {
-        if(mask.empty())
-            cout << "mask is empty " << endl;
-        if (mask.type() != CV_8UC1)
-            cout << "mask type wrong " << endl;
-        
         if (!USE_ORB) {
             cv::Mat d_prevPts;
             cv::goodFeaturesToTrack(img, d_prevPts, lack_up_top_pts, 0.01, MIN_DIST, mask);
+            std::vector<cv::Point2f> n_pts_tmp;
+            // std::cout << "d_prevPts size: "<< d_prevPts.size()<<std::endl;
             if(!d_prevPts.empty()) {
-                n_pts = cv::Mat_<cv::Point2f>(cv::Mat(d_prevPts));
+                n_pts_tmp = cv::Mat_<cv::Point2f>(cv::Mat(d_prevPts));
             }
             else {
-                n_pts.clear();
+                n_pts_tmp.clear();
+            }
+            n_pts.clear();
+            std::vector<cv::Point2f> all_pts = cur_pts;
+            for (auto & pt : n_pts_tmp) {
+                bool has_nearby = false;
+                for (auto &pt_j: all_pts) {
+                    if (cv::norm(pt-pt_j) < MIN_DIST) {
+                        has_nearby = true;
+                        break;
+                    }
+                }
+                if (!has_nearby) {
+                    n_pts.push_back(pt);
+                    all_pts.push_back(pt);
+                }
             }
         } else {
             if (img.cols() == img.rows()) {
@@ -323,6 +335,91 @@ vector<cv::Point2f> opticalflow_track(cv::Mat & cur_img, vector<cv::Mat> * cur_p
     return cur_pts;
 } 
 
+vector<cv::Point2f> opticalflow_track(cv::Mat & cur_img, cv::Mat & prev_img, vector<cv::Point2f> & prev_pts, 
+                        vector<int> & ids, vector<int> & track_cnt, std::set<int> removed_pts, std::map<int, cv::Point2f> prediction_points) {
+    if (prev_pts.size() == 0) {
+        return vector<cv::Point2f>();
+    }
+    TicToc tic;
+    vector<uchar> status;
+
+    for (size_t i = 0; i < ids.size(); i ++) {
+        int _id = ids[i];
+        if (removed_pts.find(_id) == removed_pts.end()) {
+            status.push_back(1);
+        } else {
+            status.push_back(0);
+        }
+    }
+
+    reduceVector(prev_pts, status);
+    reduceVector(ids, status);
+    reduceVector(track_cnt, status);
+    
+    if (prev_pts.size() == 0) {
+        return vector<cv::Point2f>();
+    }
+
+    // vector<cv::Point2f> cur_pts = get_predict_pts(ids, prev_pts, prediction_points);
+    vector<cv::Point2f> cur_pts = prev_pts;
+
+    TicToc t_og;
+    status.clear();
+    vector<float> err;
+    
+    TicToc t_build;
+
+    TicToc t_calc;
+    // cv::calcOpticalFlowPyrLK(prev_img, cur_img, prev_pts, cur_pts, status, err, WIN_SIZE, PYR_LEVEL, 
+    //     cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
+    cv::calcOpticalFlowPyrLK(prev_img, cur_img, prev_pts, cur_pts, status, err, WIN_SIZE, PYR_LEVEL);
+    // std::cout << "Track img Prev pts" << prev_pts.size() << " TS " << t_calc.toc() << std::endl;    
+    if(FLOW_BACK)
+    {
+        vector<cv::Point2f> reverse_pts;
+        vector<uchar> reverse_status;
+        // cv::calcOpticalFlowPyrLK(cur_img, prev_img, cur_pts, reverse_pts, reverse_status, err, WIN_SIZE, PYR_LEVEL,
+        //     cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
+        cv::calcOpticalFlowPyrLK(cur_img, prev_img, cur_pts, reverse_pts, reverse_status, err, WIN_SIZE, PYR_LEVEL);
+
+        for(size_t i = 0; i < status.size(); i++)
+        {
+            if(status[i] && reverse_status[i] && distance(prev_pts[i], reverse_pts[i]) <= 0.5)
+            {
+                status[i] = 1;
+            }
+            else
+                status[i] = 0;
+        }
+    }
+
+    for (int i = 0; i < int(cur_pts.size()); i++){
+        if (status[i] && !inBorder(cur_pts[i], cur_img.size())) {
+            status[i] = 0;
+        }
+    }   
+    reduceVector(prev_pts, status);
+    reduceVector(cur_pts, status);
+    reduceVector(ids, status);
+    if(track_cnt.size() > 0) {
+        reduceVector(track_cnt, status);
+    }
+
+    // std::cout << "Cur pts" << cur_pts.size() << std::endl;
+
+
+#ifdef PERF_OUTPUT
+    ROS_INFO("Optical flow costs: %fms Pts %ld", t_og.toc(), ids.size());
+#endif
+
+    //printf("track cnt %d\n", (int)ids.size());
+
+    for (auto &n : track_cnt)
+        n++;
+
+    return cur_pts;
+} 
+
 map<int, cv::Point2f> pts_map(vector<int> ids, vector<cv::Point2f> cur_pts) {
     map<int, cv::Point2f> prevMap;
     for (unsigned int i = 0; i < ids.size(); i ++) {
@@ -363,8 +460,10 @@ void BaseFeatureTracker::drawTrackImage(cv::Mat & img, vector<cv::Point2f> pts, 
         }
 
         cv::circle(img, pts[j], 1, color, 2);
-        sprintf(idtext, "%d", ids[j]);
-	    cv::putText(img, idtext, pts[j] - cv::Point2f(5, 0), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
+        if (SHOW_FEATURE_ID) {
+            sprintf(idtext, "%d", ids[j]);
+	        cv::putText(img, idtext, pts[j] - cv::Point2f(5, 0), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
+        }
     }
 
     // for (auto it : predictions) {
@@ -387,7 +486,7 @@ void BaseFeatureTracker::drawTrackImage(cv::Mat & img, vector<cv::Point2f> pts, 
     }
 }
 
-#ifdef USE_CUDA
+#ifndef WITHOUT_CUDA
 vector<cv::Point2f> opticalflow_track(cv::cuda::GpuMat & cur_img, 
                         std::vector<cv::cuda::GpuMat> & prev_pyr, vector<cv::Point2f> & prev_pts, 
                         vector<int> & ids, vector<int> & track_cnt, std::set<int> removed_pts,
@@ -544,33 +643,22 @@ void detectPoints(const cv::cuda::GpuMat & img, vector<cv::Point2f> & n_pts,
 
         n_pts.clear();
 
-        if (cur_pts.size() > 0) {
-            cv::flann::KDTreeIndexParams indexParams;
-            // std::cout << cv::Mat(cur_pts).reshape(1) << std::endl;
-            cv::flann::Index kdtree(cv::Mat(cur_pts).reshape(1), indexParams);
-
-            for (auto & pt : n_pts_tmp) {
-                std::vector<float> query;
-                query.push_back(pt.x); //Insert the 2D point we need to find neighbours to the query
-                query.push_back(pt.y); //Insert the 2D point we need to find neighbours to the query
-
-                vector<int> indices;
-                vector<float> dists;
-                auto ret = kdtree.radiusSearch(query, indices, dists, MIN_DIST, 1);
-
-                if (ret && indices.size() > 0) {
-                    // printf("Ret %ld Found pt %d dis %f ", ret, indices[0], dists[0]);
-                    // printf("New PT %f %f foundpt %f %f Skipping...\n", pt.x, pt.y, cur_pts[indices[0]].x, cur_pts[indices[0]].y);
-                } else {
-                    // printf("No nearest neighbors found\n");
-                    n_pts.push_back(pt);
+        std::vector<cv::Point2f> all_pts = cur_pts;
+        for (auto & pt : n_pts_tmp) {
+            bool has_nearby = false;
+            for (auto &pt_j: all_pts) {
+                if (cv::norm(pt-pt_j) < MIN_DIST) {
+                    has_nearby = true;
+                    break;
                 }
             }
-        } else {
-            n_pts = n_pts_tmp;
+
+            if (!has_nearby) {
+                n_pts.push_back(pt);
+                all_pts.push_back(pt);
             }
         }
-    else {
+    } else {
         n_pts.clear();
     }
 #ifdef PERF_OUTPUT

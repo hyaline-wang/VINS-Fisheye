@@ -2,24 +2,25 @@
 #include "../estimator/estimator.h"
 #include "fisheye_undist.hpp"
 #include "feature_tracker_fisheye.hpp"
-
 namespace FeatureTracker {
 
-#ifdef USE_CUDA
 void FisheyeFeatureTrackerCuda::drawTrackFisheye(const cv::Mat & img_up,
     const cv::Mat & img_down,
     cv::cuda::GpuMat imUpTop,
     cv::cuda::GpuMat imDownTop,
     cv::cuda::GpuMat imUpSide_cuda, 
     cv::cuda::GpuMat imDownSide_cuda) {
+#ifndef WITHOUT_CUDA
     cv::Mat a, b, c, d;
     imUpTop.download(a);
     imDownTop.download(b);
     imUpSide_cuda.download(c);
     imDownSide_cuda.download(d);
     BaseFisheyeFeatureTracker::drawTrackFisheye(img_up, img_down, a, b, c, d);
+#endif
 }
 
+#ifndef WITHOUT_CUDA
 cv::cuda::GpuMat concat_side(const std::vector<cv::cuda::GpuMat> & arr) {
     int cols = arr[1].cols;
     int rows = arr[1].rows;
@@ -39,9 +40,9 @@ cv::cuda::GpuMat concat_side(const std::vector<cv::cuda::GpuMat> & arr) {
         return NewImg;
     }
 }
+#endif
 
-
-
+#ifndef WITHOUT_CUDA
 std::vector<cv::Mat> convertCPUMat(const std::vector<cv::cuda::GpuMat> & arr) {
     std::vector<cv::Mat> ret;
     for (const auto & mat:arr) {
@@ -53,13 +54,17 @@ std::vector<cv::Mat> convertCPUMat(const std::vector<cv::cuda::GpuMat> & arr) {
 
     return ret;
 }
+#endif
 
 FeatureFrame FisheyeFeatureTrackerCuda::trackImage(double _cur_time,   
     cv::InputArray img1, cv::InputArray img2) {
+#ifndef WITHOUT_CUDA
     cur_time = _cur_time;
     static double detected_time_sum = 0;
     static double ft_time_sum = 0;
-    static double count = 0;
+    static double track_total_sum = 0;
+    static int count = 0;
+    TicToc tic_total;
     
     if (!is_blank_init) {
         count += 1;
@@ -194,6 +199,7 @@ FeatureFrame FisheyeFeatureTrackerCuda::trackImage(double _cur_time,
     cur_down_side_un_pts = undistortedPtsSide(cur_down_side_pts, fisheys_undists[1], true);
 
     //Calculate Velocitys
+    //cur_up_top_un_pts_map is not been calculated!
     up_top_vel = ptsVelocity3D(ids_up_top, cur_up_top_un_pts, cur_up_top_un_pts_map, prev_up_top_un_pts_map);
     down_top_vel = ptsVelocity3D(ids_down_top, cur_down_top_un_pts, cur_down_top_un_pts_map, prev_down_top_un_pts_map);
 
@@ -219,7 +225,7 @@ FeatureFrame FisheyeFeatureTrackerCuda::trackImage(double _cur_time,
     prev_up_top_un_pts_map = cur_up_top_un_pts_map;
     prev_down_top_un_pts_map = cur_down_top_un_pts_map;
     prev_up_side_un_pts_map = cur_up_side_un_pts_map;
-    prev_down_side_un_pts_map = cur_up_side_un_pts_map;
+    prev_down_side_un_pts_map = cur_down_side_un_pts_map;
     prev_time = cur_time;
 
     up_top_prevLeftPtsMap = pts_map(ids_up_top, cur_up_top_pts);
@@ -227,17 +233,20 @@ FeatureFrame FisheyeFeatureTrackerCuda::trackImage(double _cur_time,
     up_side_prevLeftPtsMap = pts_map(ids_up_side, cur_up_side_pts);
     down_side_prevLeftPtsMap = pts_map(ids_down_side, cur_down_side_pts);
 
+
     // hasPrediction = false;
     auto ff = setup_feature_frame();
-
-    printf("FT Whole %3.1fms; PTS %ld, STEREO %ld; Detect AVG %3.1fms OpticalFlow %3.1fms concat %3.1fms\n", 
+    track_total_sum += tic_total.toc();
+    printf("%d: trackImage: %3.1fms; PT NUM: %ld, STEREO: %ld; Avg: Full %.1fms GFTT %3.1fms LKFlow %3.1fms concat %3.1fms\n", 
+        count,
         t_r.toc(), 
         cur_up_top_un_pts.size() + cur_up_side_un_pts.size(),
         cur_down_side_un_pts.size(),
+        track_total_sum/count,
         detected_time_sum/count, 
         ft_time_sum/count,
         concat_cost);
     return ff;
-}
 #endif
+}
 };

@@ -97,11 +97,12 @@ protected:
 };
 
 map<int, cv::Point2f> pts_map(vector<int> ids, vector<cv::Point2f> cur_pts);
+map<int, cv::Point3f> pts_map(vector<int> ids, vector<cv::Point3f> cur_pts);
 void reduceVector(vector<cv::Point2f> &v, vector<uchar> status);
 void reduceVector(vector<int> &v, vector<uchar> status);
 double distance(cv::Point2f &pt1, cv::Point2f &pt2);
 
-#ifdef USE_CUDA
+#ifndef WITHOUT_CUDA
 vector<cv::Point2f> opticalflow_track(cv::cuda::GpuMat & cur_img, 
                     std::vector<cv::cuda::GpuMat> & prev_pyr, vector<cv::Point2f> & prev_pts, 
                     vector<int> & ids, vector<int> & track_cnt, std::set<int> removed_pts,
@@ -120,6 +121,9 @@ vector<cv::Point2f> opticalflow_track(vector<cv::Mat> * cur_pyr,
 
 vector<cv::Point2f> opticalflow_track(cv::Mat & cur_img, vector<cv::Mat> * cur_pyr, 
                     cv::Mat & prev_img, vector<cv::Mat> * prev_pyr, vector<cv::Point2f> & prev_pts, 
+                    vector<int> & ids, vector<int> & track_cnt, std::set<int> removed_pts, std::map<int, cv::Point2f> prediction_points = std::map<int, cv::Point2f>());
+
+vector<cv::Point2f> opticalflow_track(cv::Mat & cur_img, cv::Mat & prev_img, vector<cv::Point2f> & prev_pts, 
                     vector<int> & ids, vector<int> & track_cnt, std::set<int> removed_pts, std::map<int, cv::Point2f> prediction_points = std::map<int, cv::Point2f>());
 
 std::vector<cv::Point2f> detect_orb_by_region(cv::InputArray _img, cv::InputArray _mask, int features, int cols = 4, int rows = 4);
