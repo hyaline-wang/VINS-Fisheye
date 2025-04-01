@@ -13,6 +13,11 @@
 #include "../estimator/estimator.h"
 #include "fisheye_undist.hpp"
 
+#ifdef USE_CUDA
+#include <opencv2/cudaoptflow.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudaarithm.hpp>
+#endif
 
 namespace FeatureTracker {
 

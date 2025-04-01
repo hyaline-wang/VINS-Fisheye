@@ -2,14 +2,17 @@ cmake_minimum_required(VERSION 2.8.3)
 project(vins)
 
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++14 -fopenmp")
+set(CMAKE_CXX_FLAGS "-std=c++17 -fopenmp")
 #-DEIGEN_USE_MKL_ALL")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
 
-set(ENABLE_BACKWARD true)
+set(ENABLE_BACKWARD false) # set true: fatal error: backward.hpp: No such file or directory
 set(ENABLE_VWORKS false)
 set(DETECT_CUDA true)
-SET("OpenCV_DIR"  "/usr/local/share/OpenCV/")
+
+# 需要改成你自己的路径
+set(OpenCV_DIR /home/hao/fisheyews/opencv4.11_compile/build)
+set(cv_bridge_DIR /home/hao/fisheyews/cv_bridge_ws/devel/share/cv_bridge/cmake)
 
 find_package(OpenMP REQUIRED)
 
@@ -41,17 +44,18 @@ if(DETECT_CUDA)
     if (CUDA_FOUND)
         message("CUDA detected, automatically USE OpenCV with CUDA support")
         add_definitions(-D USE_CUDA)
+
         set(LIBSGM "sgm")
-        find_package(OpenCV 3.4 REQUIRED cudaimgproc)
+        find_package(OpenCV 4.11 REQUIRED cudaimgproc)
     else()
         message(WARNING "CUDA not detected, automatically USE OpenCV with CUDA support")
         set(LIBSGM "")
-        find_package(OpenCV 3.4 REQUIRED )
+        find_package(OpenCV 4.11 REQUIRED )
     endif()
 else()
     message(WARNING "CUDA not detected, automatically USE OpenCV with CUDA support")
     set(LIBSGM "")
-    find_package(OpenCV 3 REQUIRED )
+    find_package(OpenCV 4 REQUIRED )
 endif()
 
 

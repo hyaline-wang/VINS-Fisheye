@@ -1,4 +1,61 @@
-# VINS-Fisheye
+# VINS-Fisheye ubuntu20.04 cuda12.8 opencv4.11 
+
+- CUDA : 12.8
+- opencv + contrib (4.11)
+- 普通vins的依赖
+
+
+ceres 安装需要注意，会出现`_ZN5ceres12CostFunctionD2Ev' in /usr/local/lib/libceres.a(cost_function.cc.o) is referenced by DSO/usr/bin/ld: final link failed: bad value`
+解决方法,在ceres的CMakeLists.txt中添加:
+```
+# https://blog.csdn.net/MWY123_/article/details/124322024
+set(CMAKE_C_VISIBILITY_PRESET default)
+set(CMAKE_CXX_VISIBILITY_PRESET default)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN OFF)
+```
+
+## 安装依赖
+
+```bash
+sudo apt install libdw-dev
+```
+
+- cuda 安装 : 略
+- [opencv 安装](https://hyaline.qyswarm.top/article/4r1kwxab/#%E5%A4%9A%E7%89%88%E6%9C%ACopencv)
+
+
+### libsgm
+
+```bash
+git clone https://github.com/fixstars/libSGM.git
+# 2.8 之后升级了 cmake 版本 ，产生了和 cuda相关的问题
+git checkout  2.8.0
+
+# 主要，需要在CMakeLists.txt中添加，OpenCV_DIR，如
+# set(OpenCV_DIR /home/hao/fisheyews/opencv4.11_compile/build)
+#
+
+cmake -DBUILD_OPENCV_WRAPPER=ON -DLIBSGM_SHARED=ON ..
+make -j20
+sudo make install
+```
+
+
+##  修改 opencv 和 cvbridge 的路径
+
+```bash
+# 14-15 行
+# 需要改成你自己的路径
+set(OpenCV_DIR /home/hao/fisheyews/opencv4.11_compile/build)
+set(cv_bridge_DIR //home/hao/fisheyews/cv_bridge_ws/devel/share/cv_bridge/cmake)
+```
+
+
+
+
+
+
+
 This repository is a Fisheye version of [VINS-Fusion](https://github.com/HKUST-Aerial-Robotics/VINS-Fusion) with GPU and Visionworks acceleration. It can run on Nvidia TX2 in real-time, also provide depth estimation based on fisheye. This project stands as a part of __[Omni-swarm](https://arxiv.org/abs/2103.04131): A Decentralized Omnidirectional Visual-Inertial-UWB State Estimation System for Aerial Swarm__. You may use it alone on any type of robot or as a part of Omni-swarm for swarm robots.
 
 Only stereo visual-inertial-odometry is supported for fisheye cameras now. Loop closure module for fisheye camera will release later.

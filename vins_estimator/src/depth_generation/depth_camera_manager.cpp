@@ -3,6 +3,9 @@
 #include <geometry_msgs/PoseStamped.h>
 #include "../utility/tic_toc.h"
 #include "../featureTracker/fisheye_undist.hpp"
+#ifdef USE_CUDA
+#include <opencv2/cudaarithm.hpp>
+#endif
 
 using namespace Eigen;
 

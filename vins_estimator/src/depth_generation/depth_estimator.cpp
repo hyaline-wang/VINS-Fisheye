@@ -3,6 +3,11 @@
 
 #include "../utility/opencv_cuda.h"
 
+#ifdef USE_CUDA
+#include <opencv2/cudaarithm.hpp>
+#include <libsgm.h>
+#endif
+
 #include <opencv2/opencv.hpp>
 #include "../utility/tic_toc.h"
 #include "../estimator/parameters.h"
